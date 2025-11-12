@@ -177,8 +177,44 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
         cb?.({ ok: false });
         return;
       }
+      const issue = room.currentIssueId ? room.issues.get(room.currentIssueId) : null;
+      if (!issue || !issue.revealed) {
+        cb?.({ ok: false });
+        return;
+      }
+      const nonHostTotal = Array.from(room.participants.values()).filter((p) => !p.isHost).length;
+      const votesArray = Array.from(issue.votes.values());
+      const hasAllVotes = votesArray.length === nonHostTotal && nonHostTotal > 0;
+      const consensus = hasAllVotes && votesArray.every((v) => v === votesArray[0]);
+      if (!consensus) {
+        cb?.({ ok: false, error: "Sem consenso" });
+        return;
+      }
       room.currentIssueId = null;
       room.status = "idle";
+      for (const p of room.participants.values()) p.voted = false;
+      io.to(roomId).emit("room_state", buildRoomState(room));
+      cb?.({ ok: true });
+    });
+
+    socket.on("reopen_voting", ({ roomId }: { roomId: string }, cb) => {
+      const room = rooms.get(roomId);
+      if (!room) {
+        cb?.({ ok: false });
+        return;
+      }
+      if (socket.id !== room.hostSocketId) {
+        cb?.({ ok: false });
+        return;
+      }
+      const issue = room.currentIssueId ? room.issues.get(room.currentIssueId) : null;
+      if (!issue) {
+        cb?.({ ok: false });
+        return;
+      }
+      issue.revealed = false;
+      issue.votes.clear();
+      room.status = "voting";
       for (const p of room.participants.values()) p.voted = false;
       io.to(roomId).emit("room_state", buildRoomState(room));
       cb?.({ ok: true });

@@ -72,6 +72,12 @@ export default function Room() {
     }
   }, [state?.status, state?.currentIssue?.id]);
 
+  useEffect(() => {
+    if (state?.status === "voting" && state?.currentIssue && !state.currentIssue.revealed) {
+      setSelected(null);
+    }
+  }, [state?.status, state?.currentIssue?.revealed]);
+
   const inviteLink = useMemo(() => {
     if (!roomId) return "";
     if (typeof window === "undefined") return "";
@@ -123,7 +129,19 @@ export default function Room() {
     if (!roomId) return;
     const s = getSocket();
     setSelected(null);
-    s.emit("next_issue", { roomId }, () => {});
+    s.emit("next_issue", { roomId }, (res: any) => {
+      if (!res?.ok) {
+        setError(res?.error || "Sem consenso");
+      }
+    });
+  };
+
+  const reopenVoting = () => {
+    if (!roomId) return;
+    const s = getSocket();
+    setError(null);
+    setSelected(null);
+    s.emit("reopen_voting", { roomId }, () => {});
   };
 
   const nonHostTotal = state
@@ -272,11 +290,24 @@ export default function Room() {
                 : "-"}
             </div>
             {isHost ? (
-              <button className="btn" onClick={nextIssue}>
-                Próxima issue
-              </button>
+              (() => {
+                const values = (state.currentIssue?.votes || []).map((v) => v.value);
+                const consensus = values.length > 0 && values.every((x) => x === values[0]);
+                return consensus ? (
+                  <button className="btn" onClick={nextIssue}>
+                    Próxima issue
+                  </button>
+                ) : (
+                  <div className="row" style={{ justifyContent: "space-between" }}>
+                    <span className="pill">Sem consenso</span>
+                    <button className="btn secondary" onClick={reopenVoting}>
+                      Reabrir votação
+                    </button>
+                  </div>
+                );
+              })()
             ) : (
-              <span className="pill">Aguardando a próxima issue</span>
+              <span className="pill">Aguardando decisão do host</span>
             )}
           </>
         )}
