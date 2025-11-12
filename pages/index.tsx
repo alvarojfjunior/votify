@@ -33,12 +33,19 @@ export default function Home() {
 
   return (
     <div className="container">
-      <div className="card col" style={{ maxWidth: 520, margin: "60px auto" }}>
-        <div className="title">Votify</div>
-        <div className="subtitle">App colaborativo de votação por salas</div>
-        <input className="input" placeholder="Seu nome" value={name} onChange={(e) => setName(e.target.value)} />
-        <button className="btn" disabled={!name || busy} onClick={createRoom}>{busy ? "Criando..." : "Criar sala"}</button>
-        {error && <div style={{ color: "#ef4444", fontSize: 14 }}>{error}</div>}
+      <div className="card col" style={{ maxWidth: 680, margin: "80px auto", textAlign: "center" }}>
+        <div className="brand">
+          <span className="avatar" style={{ width: 40, height: 40, fontSize: 14 }}>VT</span>
+          <span className="headline">Votify</span>
+        </div>
+        <div className="hero">
+          <div className="subtitle">Votação em grupo, rápida e elegante. Crie uma sala, convide a equipe e decida com clareza.</div>
+        </div>
+        <div className="row" style={{ marginTop: 18 }}>
+          <input className="input" placeholder="Digite seu nome" value={name} onChange={(e) => setName(e.target.value)} />
+          <button className="btn" disabled={!name || busy} onClick={createRoom}>{busy ? "Criando..." : "Criar sala"}</button>
+        </div>
+        {error && <div style={{ color: "#ef4444", fontSize: 14, marginTop: 8 }}>{error}</div>}
       </div>
     </div>
   );

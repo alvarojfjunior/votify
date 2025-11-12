@@ -1,31 +1,45 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
 :root {
   --bg: #0b0f14;
-  --panel: #121821;
-  --accent: #3b82f6;
+  --panel: #101723;
+  --panel-2: rgba(255,255,255,0.04);
+  --accent: #7c3aed;
   --accent-2: #22c55e;
   --text: #e5e7eb;
   --muted: #9ca3af;
   --danger: #ef4444;
+  --shadow: 0 10px 30px rgba(0,0,0,0.35);
 }
 * { box-sizing: border-box }
 html, body, #__next { height: 100% }
-body { margin: 0; background: var(--bg); color: var(--text); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji" }
+body { margin: 0; background: radial-gradient(1200px 500px at 10% 10%, #0c1422 0%, #0b0f14 60%); color: var(--text); font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial }
 a { color: var(--accent) }
-.container { max-width: 1000px; margin: 0 auto; padding: 24px }
-.card { background: var(--panel); border-radius: 14px; padding: 20px; border: 1px solid #1f2937 }
+.container { max-width: 1100px; margin: 0 auto; padding: 28px }
+.card { background: linear-gradient(180deg, var(--panel), var(--panel-2)); border-radius: 16px; padding: 22px; border: 1px solid #1e293b; box-shadow: var(--shadow); backdrop-filter: blur(8px) }
 .row { display: flex; gap: 16px }
-.col { display: flex; flex-direction: column; gap: 12px }
-.btn { background: var(--accent); color: white; border: none; padding: 12px 16px; border-radius: 10px; font-weight: 600; cursor: pointer }
+.col { display: flex; flex-direction: column; gap: 14px }
+.btn { background: var(--accent); color: white; border: none; padding: 12px 18px; border-radius: 12px; font-weight: 700; cursor: pointer; transition: transform .06s ease, box-shadow .2s ease }
+.btn:hover { transform: translateY(-1px) }
+.btn:active { transform: translateY(1px) }
 .btn.secondary { background: #334155 }
 .btn.success { background: var(--accent-2) }
 .btn.danger { background: var(--danger) }
-.input { width: 100%; padding: 12px 14px; border-radius: 10px; border: 1px solid #1f2937; background: #0f1622; color: var(--text) }
-.pill { padding: 6px 10px; border-radius: 999px; background: #0f1622; border: 1px solid #1f2937 }
-.grid { display: grid; grid-template-columns: 1fr 2fr; gap: 16px }
-.title { font-size: 24px; font-weight: 700 }
-.subtitle { font-size: 14px; color: var(--muted) }
-.list { display: grid; gap: 8px }
-.vote-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px }
-.vote-btn { background: #0f1622; border: 1px solid #1f2937; color: var(--text); padding: 16px; border-radius: 10px; font-size: 18px; font-weight: 700; cursor: pointer }
-.vote-btn.active { background: var(--accent); border-color: var(--accent) }
-.separator { height: 1px; background: #1f2937; margin: 6px 0 }
+.input { width: 100%; padding: 14px 16px; border-radius: 12px; border: 1px solid #1f2937; background: #0f1622; color: var(--text) }
+.pill { padding: 6px 12px; border-radius: 999px; background: #0f1622; border: 1px solid #1f2937 }
+.grid { display: grid; grid-template-columns: 1fr 2fr; gap: 18px }
+.title { font-size: 28px; font-weight: 800 }
+.subtitle { font-size: 15px; color: var(--muted) }
+.list { display: grid; gap: 10px }
+.separator { height: 1px; background: #1f2937; margin: 8px 0 }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 800; letter-spacing: .4px }
+.badge { display: inline-flex; align-items: center; gap: 8px }
+.avatar { width: 32px; height: 32px; border-radius: 999px; background: #0f1622; border: 1px solid #1f2937; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700 }
+.status-dot { width: 8px; height: 8px; border-radius: 999px }
+.vote-grid { display: grid; grid-template-columns: repeat(5, minmax(90px, 1fr)); gap: 14px }
+.vote-card { position: relative; background: #0f1622; border: 1px solid #1f2937; color: var(--text); padding: 18px; border-radius: 16px; font-size: 22px; font-weight: 800; cursor: pointer; transition: transform .08s ease, box-shadow .2s ease }
+.vote-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(124,58,237,.25) }
+.vote-card:active { transform: translateY(1px) }
+.vote-card.active { background: #1a1030; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(124,58,237,.35) inset }
+.header { display: flex; align-items: center; justify-content: space-between }
+.headline { font-size: 36px; font-weight: 800 }
+.hero { display: grid; gap: 16px }
