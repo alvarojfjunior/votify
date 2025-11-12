@@ -14,6 +14,7 @@ type RoomState = {
   roomId: string;
   status: "idle" | "voting" | "revealed";
   hostName: string;
+  hostSocketId: string;
   participants: { name: string; isHost: boolean; voted: boolean }[];
   currentIssue: {
     id: string;
@@ -29,7 +30,6 @@ type RoomState = {
 export default function Room() {
   const router = useRouter();
   const { roomId } = router.query as { roomId?: string };
-  const isHost = router.query.host === "1";
   const [name, setName] = useState("");
   const [joined, setJoined] = useState(false);
   const [state, setState] = useState<RoomState | null>(null);
@@ -48,11 +48,17 @@ export default function Room() {
         if (res?.ok) setState(res.state);
       });
     }
-    if (isHost) setJoined(true);
     return () => {
       offRoomState(handler);
     };
-  }, [roomId, isHost]);
+  }, [roomId]);
+
+  useEffect(() => {
+    const s = getSocket();
+    if (state?.hostSocketId && s.id && state.hostSocketId === s.id) {
+      setJoined(true);
+    }
+  }, [state?.hostSocketId]);
 
   useEffect(() => {
     const currentId = state?.currentIssue?.id || null;
@@ -126,6 +132,7 @@ export default function Room() {
   const nonHostVoted = state
     ? state.participants.filter((p) => !p.isHost && p.voted).length
     : 0;
+  const isHost = state?.hostSocketId === getSocket().id;
 
   return (
     <div className="container grid" style={{ marginTop: 24 }}>
@@ -205,25 +212,29 @@ export default function Room() {
             <div className="title">Rodada: {state.currentIssue.title}</div>
             {!isHost ? (
               <>
-                <div className="subtitle">Escolha uma carta de 1 a 5</div>
+                {!selected && <div className="subtitle">Escolha uma carta de 1 a 5</div>}
                 <VotePanel
                   selected={selected}
                   onVote={castVote}
                   disabled={!!selected}
                 />
                 {selected && (
-                  <span
-                    className="pill"
-                    style={{ color: "#22c55e", borderColor: "#22c55e" }}
-                  >
-                    Voto enviado
-                  </span>
+                  <div className="row" style={{ alignItems: "center", justifyContent: "space-between" }}>
+                    <span className="pill" style={{ fontWeight: 700 }}>Seu voto: {selected}</span>
+                    <span className="pill" style={{ color: "#22c55e", borderColor: "#22c55e" }}>Voto enviado</span>
+                  </div>
                 )}
               </>
             ) : (
               <>
-                <div className="subtitle">
-                  Progresso: {nonHostVoted}/{nonHostTotal} prontos
+                <div className="progress">
+                  <div className="row" style={{ justifyContent: "space-between" }}>
+                    <span className="subtitle">Progresso</span>
+                    <span className="subtitle">{nonHostVoted}/{nonHostTotal}</span>
+                  </div>
+                  <div className="progress-track">
+                    <div className="progress-fill" style={{ width: `${nonHostTotal ? Math.round((nonHostVoted/nonHostTotal)*100) : 0}%` }}></div>
+                  </div>
                 </div>
                 <button
                   className="btn success"

@@ -57,6 +57,7 @@ function buildRoomState(room: Room) {
     roomId: room.id,
     status: room.status,
     hostName: room.hostName,
+    hostSocketId: room.hostSocketId,
     participants,
     currentIssue,
     votedCount,
