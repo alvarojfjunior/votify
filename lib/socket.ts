@@ -3,22 +3,15 @@ import { io, Socket } from "socket.io-client";
 let socket: Socket | null = null;
 let serverEnsured = false;
 
-function getServerUrl() {
-  const external = process.env.NEXT_PUBLIC_SOCKET_URL;
-  return external && external.length ? external : "";
-}
-
 export function ensureSocketServer() {
   if (serverEnsured) return;
   serverEnsured = true;
-  if (!getServerUrl()) fetch("/api/socket");
+  fetch("/api/socket");
 }
 
 export function getSocket(): Socket {
   if (socket) return socket;
-  const serverUrl = getServerUrl();
-  const options = { path: "/api/socket_io", autoConnect: false, transports: ["websocket", "polling"], withCredentials: true };
-  socket = serverUrl ? io(serverUrl, options) : io(options);
+  socket = io({ path: "/api/socket_io", autoConnect: false });
   return socket;
 }
 
