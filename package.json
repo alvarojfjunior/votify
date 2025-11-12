@@ -1,0 +1,21 @@
+{
+  "name": "votify",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "node server.js",
+    "build": "next build",
+    "start": "NODE_ENV=production node server.js"
+  },
+  "dependencies": {
+    "next": "14.2.10",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "socket.io": "4.8.1",
+    "socket.io-client": "4.8.1"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.4",
+    "typescript": "5.9.3"
+  }
+}
