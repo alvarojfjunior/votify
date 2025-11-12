@@ -11,7 +11,7 @@ export function ensureSocketServer() {
 
 export function getSocket(): Socket {
   if (socket) return socket;
-  socket = io({ path: "/api/socket_io", autoConnect: false });
+  socket = io({ path: "/api/socket_io", autoConnect: false, transports: ["websocket"] });
   return socket;
 }
 
