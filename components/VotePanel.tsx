@@ -1,20 +1,34 @@
 import React from "react";
 
-export default function VotePanel({ selected, onVote, disabled }: { selected: number | null; onVote: (v: number) => void; disabled: boolean }) {
+const CARD_VALUES = [0, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, "?", "☕"];
+
+interface VotePanelProps {
+  selected: number | string | null;
+  onVote: (v: number | string) => void;
+  disabled: boolean;
+  revealed?: boolean;
+  showCards?: boolean;
+}
+
+export default function VotePanel({ selected, onVote, disabled, revealed, showCards }: VotePanelProps) {
   return (
     <div className="vote-grid">
-      {[1, 2, 3, 4, 5].map((v) => (
-        <button
-          key={v}
-          className={`vote-card ${selected === v ? "active" : ""}`}
-          onClick={() => onVote(v)}
-          disabled={disabled}
-          aria-pressed={selected === v}
-        >
-          <span className="vote-value">{v}</span>
-          {selected === v && <span className="vote-check">✓</span>}
-        </button>
-      ))}
+      {CARD_VALUES.map((v, i) => {
+        const isSelected = selected === v;
+        const isHidden = !revealed && !showCards && !isSelected;
+        
+        return (
+          <button
+            key={i}
+            className={`vote-card ${isSelected ? "active" : ""} ${isHidden ? "hidden" : ""}`}
+            onClick={() => onVote(v)}
+            disabled={disabled}
+            aria-pressed={isSelected}
+          >
+            {isHidden ? "" : v}
+          </button>
+        );
+      })}
     </div>
   );
 }

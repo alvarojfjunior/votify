@@ -7,22 +7,25 @@ import {
   onRoomState,
   offRoomState,
 } from "../../lib/socket";
-import ParticipantsList from "../../components/ParticipantsList";
 import VotePanel from "../../components/VotePanel";
+
+type Participant = { name: string; isHost: boolean; voted: boolean };
+type Vote = { name: string; value: number | string };
+type Issue = {
+  id: string;
+  title: string;
+  revealed: boolean;
+  votes?: Vote[];
+  average?: number;
+};
 
 type RoomState = {
   roomId: string;
   status: "idle" | "voting" | "revealed";
   hostName: string;
   hostSocketId: string;
-  participants: { name: string; isHost: boolean; voted: boolean }[];
-  currentIssue: {
-    id: string;
-    title: string;
-    revealed: boolean;
-    votes?: { name: string; value: number }[];
-    average?: number;
-  } | null;
+  participants: Participant[];
+  currentIssue: Issue | null;
   votedCount: number;
   totalCount: number;
 };
@@ -33,9 +36,12 @@ export default function Room() {
   const [name, setName] = useState("");
   const [joined, setJoined] = useState(false);
   const [state, setState] = useState<RoomState | null>(null);
-  const [selected, setSelected] = useState<number | null>(null);
+  const [selected, setSelected] = useState<number | string | null>(null);
   const [issueTitle, setIssueTitle] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [showAddIssue, setShowAddIssue] = useState(false);
+  const [showInvite, setShowInvite] = useState(false);
+  const [copied, setCopied] = useState(false);
   const prevIssueId = useRef<string | null>(null);
 
   useEffect(() => {
@@ -84,6 +90,13 @@ export default function Room() {
     return `${window.location.origin}/room/${roomId}`;
   }, [roomId]);
 
+  const currentUserName = useMemo(() => {
+    if (!state) return name;
+    const socket = getSocket();
+    if (socket?.id && state.hostSocketId === socket.id) return state.hostName;
+    return name;
+  }, [state, name]);
+
   const join = () => {
     if (!roomId) return;
     const s = getSocket();
@@ -105,16 +118,18 @@ export default function Room() {
         return;
       }
       setIssueTitle("");
+      setShowAddIssue(false);
     });
   };
 
-  const castVote = (v: number) => {
+  const castVote = (v: number | string) => {
     if (!roomId || !state?.currentIssue?.id) return;
     const s = getSocket();
+    const numericValue = typeof v === "number" ? v : v === "?" ? -1 : 0;
     setSelected(v);
     s.emit(
       "cast_vote",
-      { roomId, issueId: state.currentIssue.id, value: v },
+      { roomId, issueId: state.currentIssue.id, value: numericValue },
       () => {}
     );
   };
@@ -150,168 +165,245 @@ export default function Room() {
   const nonHostVoted = state
     ? state.participants.filter((p) => !p.isHost && p.voted).length
     : 0;
-  const isHost = state?.hostSocketId === getSocket().id;
+  const isHost = state?.hostSocketId === getSocket()?.id;
+
+  if (!joined) {
+    return (
+      <div className="container">
+        <div className="card" style={{ maxWidth: 400, margin: "80px auto", textAlign: "center" }}>
+          <div className="robot">🤖</div>
+          <div className="title" style={{ marginTop: 16 }}>Join Room</div>
+          <div className="subtitle" style={{ marginBottom: 24 }}>Enter your name to participate</div>
+          <input
+            className="input"
+            placeholder="Your name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            style={{ textAlign: "center" }}
+          />
+          <button className="btn" onClick={join} disabled={!name} style={{ width: "100%", marginTop: 16 }}>
+            Join
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="container grid" style={{ marginTop: 24 }}>
-      <div className="card col">
-        <div className="header">
-          <div className="brand">
-            <span
-              className="avatar"
-              style={{ width: 36, height: 36, fontSize: 13 }}
-            >
-              VT
-            </span>
-          </div>
-          {state && (
-            <span className="pill">
-              {state.status === "idle"
-                ? "Ociosa"
-                : state.status === "voting"
-                ? "Votando"
-                : "Resultados"}
-            </span>
-          )}
+    <div className="container">
+      <header className="header">
+        <div className="header-left">
+          <div className="brand">Votify</div>
         </div>
-        <div className="subtitle">Convide pelo link: {inviteLink}</div>
-        <div className="separator" />
-        {state && <ParticipantsList participants={state.participants} />}
-      </div>
-      <div className="card col">
-        {!joined && (
-          <>
-            <div className="title">Quem é você?</div>
-            <input
-              className="input"
-              placeholder="Digite seu nome"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-            <button className="btn" onClick={join} disabled={!name}>
-              Entrar na sala
+        <div className="header-right">
+          <button className="btn" onClick={() => setShowInvite(true)}>
+            👥 Invite players
+          </button>
+          <button className="menu-btn">⋮</button>
+        </div>
+      </header>
+
+      {showInvite && (
+        <div className="modal-overlay" onClick={() => setShowInvite(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <span className="title">Invite players</span>
+              <button className="btn secondary" onClick={() => setShowInvite(false)} style={{ padding: "4px 8px" }}>×</button>
+            </div>
+            <div className="subtitle" style={{ marginBottom: 16 }}>Share this link with your team</div>
+            <input className="input" value={inviteLink} readOnly />
+            <button 
+              className="btn" 
+              style={{ marginTop: 16 }} 
+              onClick={() => { 
+                navigator.clipboard.writeText(inviteLink); 
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+              }}
+            >
+              {copied ? "✓ Copied!" : "📋 Copy link"}
             </button>
-          </>
-        )}
+          </div>
+        </div>
+      )}
 
-        {joined && state?.status === "idle" && (
-          <>
-            <div className="title">Sessão pronta para começar</div>
-            {isHost ? (
-              <>
-                <div className="subtitle">
-                  Crie uma issue para iniciar a rodada de votos
+      {state && (
+        <>
+          <div className="card" style={{ marginBottom: 20 }}>
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
+              <div className="col">
+                <div className="row" style={{ gap: 8 }}>
+                  <span className={`status-badge ${state.status === "idle" ? "idle" : state.status === "voting" ? "voting" : "revealed"}`}>
+                    {state.status === "idle" ? "Idle" : state.status === "voting" ? "Voting" : "Results"}
+                  </span>
+                  <div className="avatar small">{state.hostName.charAt(0)}</div>
+                  <span className="subtitle">{state.hostName} (Host)</span>
                 </div>
-                <input
-                  className="input"
-                  placeholder="Título da issue"
-                  value={issueTitle}
-                  onChange={(e) => setIssueTitle(e.target.value)}
-                />
-                <button
-                  className="btn"
-                  onClick={createIssue}
-                  disabled={!issueTitle}
-                >
-                  Criar issue
-                </button>
-                {error && (
-                  <div style={{ color: "#ef4444", fontSize: 14 }}>{error}</div>
+              </div>
+              <div className="row" style={{ gap: 6 }}>
+                {state.participants.slice(0, 4).map((p, i) => (
+                  <div key={i} className="avatar small" title={p.name} style={{ 
+                    background: p.voted ? "var(--accent-2)" : "var(--panel-2)",
+                    color: p.voted ? "white" : "var(--text-secondary)",
+                    border: "2px solid var(--panel)"
+                  }}>
+                    {p.name.charAt(0)}
+                  </div>
+                ))}
+                {state.participants.length > 4 && (
+                  <div className="avatar small" style={{ background: "var(--panel-2)", color: "var(--text-secondary)" }}>
+                    +{state.participants.length - 4}
+                  </div>
                 )}
-              </>
-            ) : (
-              <div className="subtitle">Aguardando o host iniciar a rodada</div>
-            )}
-          </>
-        )}
+              </div>
+            </div>
+          </div>
 
-        {joined && state?.status === "voting" && state.currentIssue && (
-          <>
-            <div className="title">Rodada: {state.currentIssue.title}</div>
-            {!isHost ? (
-              <>
-                {!selected && <div className="subtitle">Escolha uma carta de 1 a 5</div>}
+          {state.status === "idle" && (
+            <div className="card" style={{ textAlign: "center", padding: 40 }}>
+              <div className="robot" style={{ marginBottom: 16 }}>🤖</div>
+              <div className="title">Ready to start</div>
+              <div className="subtitle" style={{ marginBottom: 20 }}>Add an issue to begin voting</div>
+              {isHost ? (
+                !showAddIssue ? (
+                  <button className="btn" onClick={() => setShowAddIssue(true)}>+ Add issue</button>
+                ) : (
+                  <div className="add-issue-form" style={{ maxWidth: 400, margin: "0 auto" }}>
+                    <textarea
+                      className="input textarea"
+                      placeholder="Issue description..."
+                      value={issueTitle}
+                      onChange={(e) => setIssueTitle(e.target.value)}
+                      autoFocus
+                    />
+                    <div className="add-issue-actions">
+                      <button className="btn secondary" onClick={() => { setShowAddIssue(false); setIssueTitle(""); }}>Cancel</button>
+                      <button className="btn" onClick={createIssue} disabled={!issueTitle}>Save</button>
+                    </div>
+                  </div>
+                )
+              ) : (
+                <div className="pill">Waiting for host...</div>
+              )}
+            </div>
+          )}
+
+          {state.status === "voting" && state.currentIssue && (
+            <div className="card" style={{ textAlign: "center" }}>
+              <div className="row" style={{ justifyContent: "center", gap: 8, marginBottom: 8 }}>
+                <span className="issue-id">PP-1</span>
+              </div>
+              <div className="title" style={{ marginBottom: 24 }}>{state.currentIssue.title}</div>
+              <div style={{ fontSize: 24, marginBottom: 24 }}>👇</div>
+
+              <div className="voting-area">
                 <VotePanel
                   selected={selected}
                   onVote={castVote}
                   disabled={!!selected}
                 />
-                {selected && (
-                  <div className="row" style={{ alignItems: "center", justifyContent: "space-between" }}>
-                    <span className="pill" style={{ fontWeight: 700 }}>Seu voto: {selected}</span>
-                    <span className="pill" style={{ color: "#22c55e", borderColor: "#22c55e" }}>Voto enviado</span>
-                  </div>
-                )}
-              </>
-            ) : (
-              <>
-                <div className="progress">
-                  <div className="row" style={{ justifyContent: "space-between" }}>
-                    <span className="subtitle">Progresso</span>
-                    <span className="subtitle">{nonHostVoted}/{nonHostTotal}</span>
-                  </div>
-                  <div className="progress-track">
-                    <div className="progress-fill" style={{ width: `${nonHostTotal ? Math.round((nonHostVoted/nonHostTotal)*100) : 0}%` }}></div>
-                  </div>
+                <div className="voting-status">
+                  {selected ? (
+                    <><strong>Vote sent!</strong> · Waiting for others</>
+                  ) : (
+                    <>No votes · <strong>Voting now...</strong></>
+                  )}
                 </div>
-                <button
-                  className="btn success"
-                  onClick={reveal}
-                  disabled={nonHostVoted !== nonHostTotal}
-                >
-                  Revelar cartas
-                </button>
-              </>
-            )}
-          </>
-        )}
+              </div>
 
-        {joined && state?.status === "revealed" && state.currentIssue && (
-          <>
-            <div className="title">Resultados: {state.currentIssue.title}</div>
-            <div className="list">
-              {(state.currentIssue.votes || []).map((v, i) => (
-                <div
-                  key={i}
-                  className="row"
-                  style={{ justifyContent: "space-between" }}
-                >
-                  <span>{v.name}</span>
-                  <span className="pill" style={{ fontWeight: 700 }}>
-                    {v.value}
-                  </span>
-                </div>
-              ))}
-            </div>
-            <div className="subtitle">
-              Média:{" "}
-              {typeof state.currentIssue.average === "number"
-                ? state.currentIssue.average
-                : "-"}
-            </div>
-            {isHost ? (
-              (() => {
-                const values = (state.currentIssue?.votes || []).map((v) => v.value);
-                const consensus = values.length > 0 && values.every((x) => x === values[0]);
-                return consensus ? (
-                  <button className="btn" onClick={nextIssue}>
-                    Próxima issue
-                  </button>
-                ) : (
-                  <div className="row" style={{ justifyContent: "space-between" }}>
-                    <span className="pill">Sem consenso</span>
-                    <button className="btn secondary" onClick={reopenVoting}>
-                      Reabrir votação
-                    </button>
+              {isHost && (
+                <div style={{ marginTop: 24 }}>
+                  <div className="subtitle" style={{ marginBottom: 12 }}>
+                    {nonHostVoted} of {nonHostTotal} voted
                   </div>
-                );
-              })()
-            ) : (
-              <span className="pill">Aguardando decisão do host</span>
-            )}
-          </>
-        )}
-      </div>
+                  <button
+                    className="btn success"
+                    onClick={reveal}
+                    disabled={nonHostVoted !== nonHostTotal}
+                    style={{ minWidth: 180 }}
+                  >
+                    🔓 Reveal cards
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {state.status === "revealed" && state.currentIssue && (
+            <div className="card" style={{ textAlign: "center" }}>
+              <div className="row" style={{ justifyContent: "center", gap: 8, marginBottom: 8 }}>
+                <span className="issue-id">PP-1</span>
+              </div>
+              <div className="title" style={{ marginBottom: 24 }}>{state.currentIssue.title}</div>
+
+              <div className="vote-grid" style={{ marginBottom: 24 }}>
+                {(state.currentIssue.votes || []).map((v, i) => (
+                  <div key={i} className="vote-card active">
+                    {v.value === -1 ? "?" : v.value === 0 ? "☕" : v.value}
+                  </div>
+                ))}
+              </div>
+
+              <div className="list" style={{ maxWidth: 300, margin: "0 auto 20px" }}>
+                {(state.currentIssue.votes || []).map((v, i) => (
+                  <div key={i} className="participant-row" style={{ justifyContent: "space-between" }}>
+                    <span className="participant-name">{v.name}</span>
+                    <span className="participant-vote">
+                      {v.value === -1 ? "?" : v.value === 0 ? "☕" : v.value}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="title" style={{ marginBottom: 20 }}>
+                Average: {typeof state.currentIssue.average === "number" ? state.currentIssue.average.toFixed(1) : "-"}
+              </div>
+
+              {isHost && (
+                (() => {
+                  const values = (state.currentIssue?.votes || []).map((v) => typeof v.value === "number" ? v.value : -1);
+                  const consensus = values.length > 0 && values.every((x) => x === values[0]);
+                  return consensus ? (
+                    <button className="btn" onClick={nextIssue}>Next issue →</button>
+                  ) : (
+                    <div className="col" style={{ gap: 12 }}>
+                      <div className="pill" style={{ background: "rgba(234,179,8,.2)", color: "#eab308" }}>No consensus</div>
+                      <button className="btn secondary" onClick={reopenVoting}>Reopen voting</button>
+                    </div>
+                  );
+                })()
+              )}
+            </div>
+          )}
+
+          <div className="section-header" style={{ marginTop: 24 }}>
+            <span className="section-title">Issues</span>
+            <span className="section-count">{state.participants.length} participant{state.participants.length !== 1 ? "s" : ""}</span>
+          </div>
+          {state.currentIssue && (
+            <div className="issue-card active">
+              <div className="issue-item">
+                <div className="issue-number">1</div>
+                <div>
+                  <div className="issue-id">PP-1</div>
+                  <div className="issue-title">{state.currentIssue.title}</div>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      <footer className="footer">
+        <div className="footer-links">
+          <a href="#">Legal notice</a>
+          <a href="#">FAQs</a>
+          <a href="/">Home</a>
+        </div>
+        <button className="btn secondary" style={{ fontSize: 12, padding: "6px 12px" }}>
+          Sign out
+        </button>
+      </footer>
     </div>
   );
 }

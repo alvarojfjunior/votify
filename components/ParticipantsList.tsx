@@ -19,7 +19,7 @@ export default function ParticipantsList({ participants }: { participants: { nam
               <div className="badge">
                 <span className="pill" style={{ marginRight: 8 }}>{p.isHost ? "Host" : "Membro"}</span>
                 <span className="row" style={{ alignItems: "center", gap: 8 }}>
-                  <span className="status-dot" style={{ background: p.voted ? "#22c55e" : "#9ca3af" }}></span>
+                  <span className="status-dot" style={{ background: p.voted ? "var(--accent-2)" : "var(--muted)" }}></span>
                   <span className="subtitle">{p.voted ? "Votou" : "Aguardando"}</span>
                 </span>
               </div>
