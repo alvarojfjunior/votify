@@ -6,6 +6,7 @@ type Participant = {
   socketId: string;
   name: string;
   isHost: boolean;
+  isSpectator: boolean;
   voted: boolean;
 };
 
@@ -18,6 +19,7 @@ type Issue = {
 
 type Room = {
   id: string;
+  name: string;
   hostSocketId: string;
   hostName: string;
   participants: Map<string, Participant>;
@@ -33,9 +35,12 @@ if (!g.__votify_rooms) g.__votify_rooms = rooms;
 function buildRoomState(room: Room) {
   const participants = Array.from(room.participants.values()).map((p) => ({
     name: p.name,
+    avatar: p.name,
     isHost: p.isHost,
+    isSpectator: p.isSpectator,
     voted: p.voted,
   }));
+  const hostParticipant = Array.from(room.participants.values()).find(p => p.isHost);
   const issue = room.currentIssueId ? room.issues.get(room.currentIssueId) || null : null;
   const totalCount = participants.length;
   const votedCount = participants.filter((p) => p.voted).length;
@@ -55,6 +60,7 @@ function buildRoomState(room: Room) {
   }
   return {
     roomId: room.id,
+    roomName: room.name,
     status: room.status,
     hostName: room.hostName,
     hostSocketId: room.hostSocketId,
@@ -74,10 +80,11 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
   (res.socket as any).server.io = io;
 
   io.on("connection", (socket) => {
-    socket.on("create_room", ({ hostName }: { hostName: string }, cb) => {
+    socket.on("create_room", ({ hostName, roomName, isSpectator }: { hostName: string; roomName: string; isSpectator: boolean }, cb) => {
       const id = randomUUID();
       const room: Room = {
         id,
+        name: roomName || "Sala",
         hostSocketId: socket.id,
         hostName: hostName || "Host",
         participants: new Map(),
@@ -85,7 +92,7 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
         currentIssueId: null,
         status: "idle",
       };
-      room.participants.set(socket.id, { socketId: socket.id, name: room.hostName, isHost: true, voted: false });
+      room.participants.set(socket.id, { socketId: socket.id, name: room.hostName, isHost: true, isSpectator: isSpectator || false, voted: false });
       rooms.set(id, room);
       socket.join(id);
       io.to(id).emit("room_state", buildRoomState(room));
@@ -98,7 +105,7 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
         cb?.({ ok: false, error: "Sala não encontrada" });
         return;
       }
-      room.participants.set(socket.id, { socketId: socket.id, name: name || "Convidado", isHost: false, voted: false });
+      room.participants.set(socket.id, { socketId: socket.id, name: name || "Convidado", isHost: false, isSpectator: false, voted: false });
       socket.join(roomId);
       io.to(roomId).emit("room_state", buildRoomState(room));
       cb?.({ ok: true, state: buildRoomState(room) });
@@ -227,6 +234,16 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
         return;
       }
       cb?.({ ok: true, state: buildRoomState(room) });
+    });
+
+    socket.on("set_spectator", ({ roomId, isSpectator }: { roomId: string; isSpectator: boolean }, cb) => {
+      const room = rooms.get(roomId);
+      if (!room) return;
+      const participant = room.participants.get(socket.id);
+      if (!participant || !participant.isHost) return;
+      participant.isSpectator = isSpectator;
+      io.to(roomId).emit("room_state", buildRoomState(room));
+      cb?.({ ok: true });
     });
 
     socket.on("disconnect", () => {

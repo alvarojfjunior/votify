@@ -4,7 +4,8 @@ import { getSocket, ensureSocketServer } from "../lib/socket";
 
 export default function Home() {
   const router = useRouter();
-  const [name, setName] = useState("");
+  const [adminName, setAdminName] = useState("");
+  const [roomName, setRoomName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -21,7 +22,7 @@ export default function Home() {
     setBusy(true);
     setError(null);
     const s = getSocket();
-    s.emit("create_room", { hostName: name }, (res: { ok: boolean; roomId?: string; error?: string }) => {
+    s.emit("create_room", { hostName: adminName, roomName }, (res: { ok: boolean; roomId?: string; error?: string }) => {
       setBusy(false);
       if (!res.ok || !res.roomId) {
         setError(res.error || "Falha ao criar sala");
@@ -39,17 +40,24 @@ export default function Home() {
           <span className="headline">Votify</span>
         </div>
         <div className="hero-content">
-          <h1 className="hero-title">Scrum Poker para times ágeis</h1>
+          <h1 className="hero-title">Votação para grandes ideias</h1>
           <p className="hero-subtitle">Ferramenta fácil de usar e divertida para estimativas. 100% gratuita, sem límites, sem cadastro.</p>
           <div className="hero-cta">
             <input 
               className="input" 
-              placeholder="Seu nome" 
-              value={name} 
-              onChange={(e) => setName(e.target.value)} 
+              placeholder="Nome da sala" 
+              value={roomName} 
+              onChange={(e) => setRoomName(e.target.value)} 
               style={{ maxWidth: 240 }}
             />
-            <button className="btn" disabled={!name || busy} onClick={createRoom}>
+            <input 
+              className="input" 
+              placeholder="Seu nome" 
+              value={adminName} 
+              onChange={(e) => setAdminName(e.target.value)} 
+              style={{ maxWidth: 240 }}
+            />
+            <button className="btn" disabled={!adminName || !roomName || busy} onClick={createRoom}>
               {busy ? "Criando..." : "Criar sala"}
             </button>
           </div>

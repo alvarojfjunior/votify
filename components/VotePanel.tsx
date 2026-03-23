@@ -1,6 +1,6 @@
 import React from "react";
 
-const CARD_VALUES = [0, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, "?", "☕"];
+const CARD_VALUES = [0, 1, 2, 3, 5];
 
 interface VotePanelProps {
   selected: number | string | null;

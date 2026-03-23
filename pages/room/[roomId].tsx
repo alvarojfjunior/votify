@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/router";
+import Avatar, { genConfig } from "react-nice-avatar";
 import {
   connectIfNeeded,
   ensureSocketServer,
@@ -9,7 +10,7 @@ import {
 } from "../../lib/socket";
 import VotePanel from "../../components/VotePanel";
 
-type Participant = { name: string; isHost: boolean; voted: boolean };
+type Participant = { name: string; avatar: string; isHost: boolean; isSpectator: boolean; voted: boolean };
 type Vote = { name: string; value: number | string };
 type Issue = {
   id: string;
@@ -21,6 +22,7 @@ type Issue = {
 
 type RoomState = {
   roomId: string;
+  roomName: string;
   status: "idle" | "voting" | "revealed";
   hostName: string;
   hostSocketId: string;
@@ -34,6 +36,7 @@ export default function Room() {
   const router = useRouter();
   const { roomId } = router.query as { roomId?: string };
   const [name, setName] = useState("");
+  const [isSpectator, setIsSpectator] = useState(false);
   const [joined, setJoined] = useState(false);
   const [state, setState] = useState<RoomState | null>(null);
   const [selected, setSelected] = useState<number | string | null>(null);
@@ -160,10 +163,10 @@ export default function Room() {
   };
 
   const nonHostTotal = state
-    ? state.participants.filter((p) => !p.isHost).length
+    ? state.participants.filter((p) => !p.isHost && !p.isSpectator).length
     : 0;
   const nonHostVoted = state
-    ? state.participants.filter((p) => !p.isHost && p.voted).length
+    ? state.participants.filter((p) => !p.isHost && !p.isSpectator && p.voted).length
     : 0;
   const isHost = state?.hostSocketId === getSocket()?.id;
 
@@ -174,6 +177,11 @@ export default function Room() {
           <div className="robot">🤖</div>
           <div className="title" style={{ marginTop: 16 }}>Join Room</div>
           <div className="subtitle" style={{ marginBottom: 24 }}>Enter your name to participate</div>
+          <div style={{ marginBottom: 16 }}>
+            {name && (
+              <Avatar {...genConfig(name)} style={{ width: 64, height: 64 }} />
+            )}
+          </div>
           <input
             className="input"
             placeholder="Your name"
@@ -194,12 +202,26 @@ export default function Room() {
       <header className="header">
         <div className="header-left">
           <div className="brand">Votify</div>
+          {state?.roomName && <div className="pill" style={{ marginLeft: 12 }}>{state.roomName}</div>}
         </div>
         <div className="header-right">
+          {isHost && (
+            <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 14, marginRight: 12 }}>
+              <input 
+                type="checkbox" 
+                checked={isSpectator} 
+                onChange={(e) => {
+                  setIsSpectator(e.target.checked);
+                  const s = getSocket();
+                  s.emit("set_spectator", { roomId, isSpectator: e.target.checked }, () => {});
+                }} 
+              />
+              Espectador
+            </label>
+          )}
           <button className="btn" onClick={() => setShowInvite(true)}>
             👥 Invite players
           </button>
-          <button className="menu-btn">⋮</button>
         </div>
       </header>
 
@@ -232,23 +254,26 @@ export default function Room() {
           <div className="card" style={{ marginBottom: 20 }}>
             <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
               <div className="col">
+                {state.roomName && <div className="title" style={{ marginBottom: 8 }}>{state.roomName}</div>}
                 <div className="row" style={{ gap: 8 }}>
                   <span className={`status-badge ${state.status === "idle" ? "idle" : state.status === "voting" ? "voting" : "revealed"}`}>
                     {state.status === "idle" ? "Idle" : state.status === "voting" ? "Voting" : "Results"}
                   </span>
-                  <div className="avatar small">{state.hostName.charAt(0)}</div>
+                  <Avatar {...genConfig(state.hostName)} style={{ width: 28, height: 28 }} />
                   <span className="subtitle">{state.hostName} (Host)</span>
                 </div>
               </div>
               <div className="row" style={{ gap: 6 }}>
                 {state.participants.slice(0, 4).map((p, i) => (
-                  <div key={i} className="avatar small" title={p.name} style={{ 
-                    background: p.voted ? "var(--accent-2)" : "var(--panel-2)",
-                    color: p.voted ? "white" : "var(--text-secondary)",
-                    border: "2px solid var(--panel)"
-                  }}>
-                    {p.name.charAt(0)}
-                  </div>
+                  <Avatar 
+                    key={i} 
+                    {...genConfig(p.name)}
+                    style={{ 
+                      width: 28, 
+                      height: 28,
+                      border: p.voted ? "2px solid var(--accent-2)" : "2px solid var(--panel)"
+                    }}
+                  />
                 ))}
                 {state.participants.length > 4 && (
                   <div className="avatar small" style={{ background: "var(--panel-2)", color: "var(--text-secondary)" }}>
@@ -297,11 +322,15 @@ export default function Room() {
               <div style={{ fontSize: 24, marginBottom: 24 }}>👇</div>
 
               <div className="voting-area">
-                <VotePanel
-                  selected={selected}
-                  onVote={castVote}
-                  disabled={!!selected}
-                />
+                {!isSpectator ? (
+                  <VotePanel
+                    selected={selected}
+                    onVote={castVote}
+                    disabled={!!selected || (isHost && isSpectator)}
+                  />
+                ) : (
+                  <div className="voting-status">Você está assistindo como espectador</div>
+                )}
                 <div className="voting-status">
                   {selected ? (
                     <><strong>Vote sent!</strong> · Waiting for others</>
