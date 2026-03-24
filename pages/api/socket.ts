@@ -22,23 +22,54 @@ type Room = {
   name: string;
   hostSocketId: string;
   hostName: string;
+  originalHostName: string;
   participants: Map<string, Participant>;
   issues: Map<string, Issue>;
   currentIssueId: string | null;
   status: "idle" | "voting" | "revealed";
+  createdAt: number;
 };
 
 const g: any = globalThis as any;
 const rooms: Map<string, Room> = g.__votify_rooms || new Map();
 if (!g.__votify_rooms) g.__votify_rooms = rooms;
 
-function buildRoomState(room: Room) {
+const CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const ROOM_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+function cleanupOldRooms() {
+  const now = Date.now();
+  let removed = 0;
+  for (const [roomId, room] of rooms.entries()) {
+    if (now - room.createdAt > ROOM_MAX_AGE_MS) {
+      rooms.delete(roomId);
+      removed++;
+    }
+  }
+  if (removed > 0) {
+    console.log(`[votify] Cleanup: removed ${removed} old rooms`);
+  }
+}
+
+let cleanupInterval: NodeJS.Timeout | null = null;
+function startCleanupCron() {
+  cleanupOldRooms();
+  cleanupInterval = setInterval(cleanupOldRooms, CLEANUP_INTERVAL_MS);
+}
+
+if (!g.__votify_cleanup_started) {
+  g.__votify_cleanup_started = true;
+  startCleanupCron();
+}
+
+function buildRoomState(room: Room, requestingSocketId?: string) {
   const participants = Array.from(room.participants.values()).map((p) => ({
     name: p.name,
     avatar: p.name,
     isHost: p.isHost,
     isSpectator: p.isSpectator,
     voted: p.voted,
+    socketId: p.socketId,
   }));
   const hostParticipant = Array.from(room.participants.values()).find(p => p.isHost);
   const issue = room.currentIssueId ? room.issues.get(room.currentIssueId) || null : null;
@@ -68,16 +99,26 @@ function buildRoomState(room: Room) {
     currentIssue,
     votedCount,
     totalCount,
-  };
+  } as any;
 }
 
 export default function handler(req: NextApiRequest, res: NextApiResponse) {
-  if ((res.socket as any).server.io) {
+  const server = (res.socket as any).server;
+  
+  if (server.io) {
     res.end();
     return;
   }
-  const io = new IOServer((res.socket as any).server, { path: "/api/socket_io" });
-  (res.socket as any).server.io = io;
+
+  const io = new IOServer(server, {
+    path: "/api/socket_io",
+    cors: {
+      origin: "*",
+      methods: ["GET", "POST"],
+    },
+  });
+  
+  server.io = io;
 
   io.on("connection", (socket) => {
     socket.on("create_room", ({ hostName, roomName, isSpectator }: { hostName: string; roomName: string; isSpectator: boolean }, cb) => {
@@ -87,10 +128,12 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
         name: roomName || "Sala",
         hostSocketId: socket.id,
         hostName: hostName || "Host",
+        originalHostName: hostName || "Host",
         participants: new Map(),
         issues: new Map(),
         currentIssueId: null,
         status: "idle",
+        createdAt: Date.now(),
       };
       room.participants.set(socket.id, { socketId: socket.id, name: room.hostName, isHost: true, isSpectator: isSpectator || false, voted: false });
       rooms.set(id, room);
@@ -105,7 +148,52 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
         cb?.({ ok: false, error: "Sala não encontrada" });
         return;
       }
-      room.participants.set(socket.id, { socketId: socket.id, name: name || "Convidado", isHost: false, isSpectator: false, voted: false });
+      const isNoHost = !room.hostSocketId;
+      room.participants.set(socket.id, { socketId: socket.id, name: name || "Convidado", isHost: isNoHost, isSpectator: false, voted: false });
+      if (isNoHost) {
+        room.hostSocketId = socket.id;
+        room.hostName = name || "Convidado";
+      }
+      socket.join(roomId);
+      const state = buildRoomState(room);
+      const issue = room.currentIssueId ? room.issues.get(room.currentIssueId) : null;
+      if (issue) {
+        state.myVote = issue.votes.get(socket.id) ?? null;
+      }
+      io.to(roomId).emit("room_state", buildRoomState(room));
+      cb?.({ ok: true, state });
+    });
+
+    socket.on("rejoin_room", ({ roomId, name }: { roomId: string; name: string }, cb) => {
+      const room = rooms.get(roomId);
+      if (!room) {
+        cb?.({ ok: false, error: "Sala não encontrada" });
+        return;
+      }
+      
+      const existingHost = Array.from(room.participants.values()).find(p => p.isHost && p.name === name);
+      if (existingHost && existingHost.socketId !== socket.id) {
+        room.participants.delete(existingHost.socketId);
+      }
+      
+      const existing = Array.from(room.participants.values()).find(p => p.name === name && !p.isHost);
+      if (existing) {
+        room.participants.delete(existing.socketId);
+      }
+      
+      const isOriginalHost = room.originalHostName === name;
+      room.participants.set(socket.id, { 
+        socketId: socket.id, 
+        name: name || "Convidado", 
+        isHost: isOriginalHost || room.participants.size === 0, 
+        isSpectator: false, 
+        voted: false 
+      });
+      
+      if (isOriginalHost) {
+        room.hostSocketId = socket.id;
+      }
+      
       socket.join(roomId);
       io.to(roomId).emit("room_state", buildRoomState(room));
       cb?.({ ok: true, state: buildRoomState(room) });
@@ -142,7 +230,7 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
         cb?.({ ok: false });
         return;
       }
-      if (value < 1 || value > 5) {
+      if (value < 0 || value > 5) {
         cb?.({ ok: false });
         return;
       }
@@ -189,14 +277,6 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
         cb?.({ ok: false });
         return;
       }
-      const nonHostTotal = Array.from(room.participants.values()).filter((p) => !p.isHost).length;
-      const votesArray = Array.from(issue.votes.values());
-      const hasAllVotes = votesArray.length === nonHostTotal && nonHostTotal > 0;
-      const consensus = hasAllVotes && votesArray.every((v) => v === votesArray[0]);
-      if (!consensus) {
-        cb?.({ ok: false, error: "Sem consenso" });
-        return;
-      }
       room.currentIssueId = null;
       room.status = "idle";
       for (const p of room.participants.values()) p.voted = false;
@@ -233,7 +313,24 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
         cb?.({ ok: false });
         return;
       }
-      cb?.({ ok: true, state: buildRoomState(room) });
+      const state = buildRoomState(room);
+      const issue = room.currentIssueId ? room.issues.get(room.currentIssueId) : null;
+      if (issue) {
+        state.myVote = issue.votes.get(socket.id) ?? null;
+      }
+      cb?.({ ok: true, state });
+    });
+
+    socket.on("sync_state", ({ roomId }: { roomId: string }, cb) => {
+      const room = rooms.get(roomId);
+      if (!room) {
+        cb?.({ ok: false });
+        return;
+      }
+      if (room.participants.has(socket.id)) {
+        io.to(roomId).emit("room_state", buildRoomState(room));
+      }
+      cb?.({ ok: true });
     });
 
     socket.on("set_spectator", ({ roomId, isSpectator }: { roomId: string; isSpectator: boolean }, cb) => {
@@ -249,15 +346,24 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
     socket.on("disconnect", () => {
       for (const room of rooms.values()) {
         if (room.participants.has(socket.id)) {
+          const isHostLeaving = room.hostSocketId === socket.id;
           room.participants.delete(socket.id);
-          if (room.hostSocketId === socket.id) {
-            const newHost = Array.from(room.participants.values())[0];
-            if (newHost) {
+          
+          if (isHostLeaving) {
+            const remaining = Array.from(room.participants.values());
+            if (remaining.length > 0) {
+              for (const p of room.participants.values()) {
+                p.isHost = false;
+              }
+              const newHost = remaining[0];
+              newHost.isHost = true;
               room.hostSocketId = newHost.socketId;
               room.hostName = newHost.name;
-              newHost.isHost = true;
+            } else {
+              room.hostSocketId = "";
             }
           }
+          
           io.to(room.id).emit("room_state", buildRoomState(room));
         }
       }

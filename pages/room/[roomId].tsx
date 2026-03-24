@@ -7,10 +7,11 @@ import {
   getSocket,
   onRoomState,
   offRoomState,
+  setCurrentRoomId,
 } from "../../lib/socket";
 import VotePanel from "../../components/VotePanel";
 
-type Participant = { name: string; avatar: string; isHost: boolean; isSpectator: boolean; voted: boolean };
+type Participant = { name: string; avatar: string; isHost: boolean; isSpectator: boolean; voted: boolean; socketId?: string };
 type Vote = { name: string; value: number | string };
 type Issue = {
   id: string;
@@ -30,6 +31,7 @@ type RoomState = {
   currentIssue: Issue | null;
   votedCount: number;
   totalCount: number;
+  myVote: number | null;
 };
 
 export default function Room() {
@@ -48,17 +50,19 @@ export default function Room() {
   const prevIssueId = useRef<string | null>(null);
 
   useEffect(() => {
-    ensureSocketServer();
+    if (!roomId) return;
+    setCurrentRoomId(roomId);
     const s = connectIfNeeded();
     const handler = (payload: RoomState) => setState(payload);
     onRoomState(handler);
-    if (roomId) {
+    ensureSocketServer().then(() => {
       s.emit("get_room_state", { roomId }, (res: any) => {
         if (res?.ok) setState(res.state);
       });
-    }
+    });
     return () => {
       offRoomState(handler);
+      setCurrentRoomId(null);
     };
   }, [roomId]);
 
@@ -127,6 +131,7 @@ export default function Room() {
 
   const castVote = (v: number | string) => {
     if (!roomId || !state?.currentIssue?.id) return;
+    if (state.status !== "voting") return;
     const s = getSocket();
     const numericValue = typeof v === "number" ? v : v === "?" ? -1 : 0;
     setSelected(v);
@@ -146,10 +151,11 @@ export default function Room() {
   const nextIssue = () => {
     if (!roomId) return;
     const s = getSocket();
+    setError(null);
     setSelected(null);
     s.emit("next_issue", { roomId }, (res: any) => {
       if (!res?.ok) {
-        setError(res?.error || "Sem consenso");
+        setError(res?.error || "Falha ao avançar para próxima issue");
       }
     });
   };
@@ -252,36 +258,75 @@ export default function Room() {
       {state && (
         <>
           <div className="card" style={{ marginBottom: 20 }}>
-            <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
               <div className="col">
                 {state.roomName && <div className="title" style={{ marginBottom: 8 }}>{state.roomName}</div>}
                 <div className="row" style={{ gap: 8 }}>
                   <span className={`status-badge ${state.status === "idle" ? "idle" : state.status === "voting" ? "voting" : "revealed"}`}>
                     {state.status === "idle" ? "Idle" : state.status === "voting" ? "Voting" : "Results"}
                   </span>
-                  <Avatar {...genConfig(state.hostName)} style={{ width: 28, height: 28 }} />
-                  <span className="subtitle">{state.hostName} (Host)</span>
                 </div>
               </div>
               <div className="row" style={{ gap: 6 }}>
-                {state.participants.slice(0, 4).map((p, i) => (
-                  <Avatar 
-                    key={i} 
-                    {...genConfig(p.name)}
-                    style={{ 
-                      width: 28, 
-                      height: 28,
-                      border: p.voted ? "2px solid var(--accent-2)" : "2px solid var(--panel)"
-                    }}
-                  />
-                ))}
-                {state.participants.length > 4 && (
+                {state.participants.length > 6 && (
                   <div className="avatar small" style={{ background: "var(--panel-2)", color: "var(--text-secondary)" }}>
-                    +{state.participants.length - 4}
+                    +{state.participants.length - 6}
                   </div>
                 )}
               </div>
             </div>
+            <div className="participants-grid">
+              {state.participants.map((p, i) => (
+                <div key={i} className="participant-chip" style={{ 
+                  display: "flex", 
+                  alignItems: "center", 
+                  gap: 8, 
+                  padding: "6px 12px",
+                  background: "var(--panel-2)",
+                  borderRadius: 20,
+                  border: p.isHost ? "2px solid var(--accent)" : "2px solid transparent"
+                }}>
+                  <Avatar {...genConfig(p.name)} style={{ width: 24, height: 24 }} />
+                  <span style={{ fontSize: 14, color: "var(--text)" }}>{p.name}</span>
+                  {p.isHost && <span style={{ fontSize: 10, color: "var(--accent)", background: "rgba(139,92,246,0.2)", padding: "2px 6px", borderRadius: 4 }}>HOST</span>}
+                  {state.status === "voting" && !p.isHost && (
+                    <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 4 }}>
+                      {p.socketId === getSocket()?.id && state.myVote !== null ? (
+                        <span style={{ 
+                          fontSize: 12, 
+                          fontWeight: 600, 
+                          background: "var(--accent)", 
+                          color: "#0d1117",
+                          padding: "2px 8px", 
+                          borderRadius: 8 
+                        }}>
+                          {state.myVote === -1 ? "?" : state.myVote === 0 ? "☕" : state.myVote}
+                        </span>
+                      ) : (
+                        <span style={{ 
+                          width: 8, 
+                          height: 8, 
+                          borderRadius: "50%", 
+                          background: p.voted ? "var(--accent-2)" : "var(--muted)",
+                        }} />
+                      )}
+                    </span>
+                  )}
+                  {state.status === "revealed" && !p.isHost && (
+                    <span style={{ fontSize: 12, color: "var(--muted)", marginLeft: "auto" }}>
+                      {state.currentIssue?.votes?.find((v) => v.name === p.name)?.value === -1 ? "?" : 
+                       state.currentIssue?.votes?.find((v) => v.name === p.name)?.value === 0 ? "☕" : 
+                       state.currentIssue?.votes?.find((v) => v.name === p.name)?.value || "-"}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+            {state.status === "voting" && (
+              <div style={{ marginTop: 12, fontSize: 13, color: "var(--muted)", textAlign: "center" }}>
+                {state.votedCount}/{state.totalCount - (state.participants.filter(p => p.isSpectator && !p.isHost).length)} voted
+              </div>
+            )}
           </div>
 
           {state.status === "idle" && (
@@ -326,7 +371,7 @@ export default function Room() {
                   <VotePanel
                     selected={selected}
                     onVote={castVote}
-                    disabled={!!selected || (isHost && isSpectator)}
+                    disabled={isHost && isSpectator}
                   />
                 ) : (
                   <div className="voting-status">Você está assistindo como espectador</div>
@@ -388,19 +433,17 @@ export default function Room() {
                 Average: {typeof state.currentIssue.average === "number" ? state.currentIssue.average.toFixed(1) : "-"}
               </div>
 
-              {isHost && (
-                (() => {
-                  const values = (state.currentIssue?.votes || []).map((v) => typeof v.value === "number" ? v.value : -1);
-                  const consensus = values.length > 0 && values.every((x) => x === values[0]);
-                  return consensus ? (
-                    <button className="btn" onClick={nextIssue}>Next issue →</button>
-                  ) : (
-                    <div className="col" style={{ gap: 12 }}>
-                      <div className="pill" style={{ background: "rgba(234,179,8,.2)", color: "#eab308" }}>No consensus</div>
-                      <button className="btn secondary" onClick={reopenVoting}>Reopen voting</button>
-                    </div>
-                  );
-                })()
+              {isHost && state.currentIssue?.votes && (
+                <div className="col" style={{ gap: 12 }}>
+                  {(() => {
+                    const votes = state.currentIssue!.votes!;
+                    const hasConsensus = votes.length > 0 && votes.every(v => v.value === votes[0].value);
+                    if (hasConsensus) {
+                      return <button className="btn" onClick={nextIssue}>Next issue →</button>;
+                    }
+                    return <button className="btn secondary" onClick={reopenVoting}>Reopen voting ↺</button>;
+                  })()}
+                </div>
               )}
             </div>
           )}
@@ -429,9 +472,6 @@ export default function Room() {
           <a href="#">FAQs</a>
           <a href="/">Home</a>
         </div>
-        <button className="btn secondary" style={{ fontSize: 12, padding: "6px 12px" }}>
-          Sign out
-        </button>
       </footer>
     </div>
   );

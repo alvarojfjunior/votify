@@ -15,17 +15,16 @@ export default function VotePanel({ selected, onVote, disabled, revealed, showCa
     <div className="vote-grid">
       {CARD_VALUES.map((v, i) => {
         const isSelected = selected === v;
-        const isHidden = !revealed && !showCards && !isSelected;
         
         return (
           <button
             key={i}
-            className={`vote-card ${isSelected ? "active" : ""} ${isHidden ? "hidden" : ""}`}
+            className={`vote-card ${isSelected ? "active" : ""}`}
             onClick={() => onVote(v)}
             disabled={disabled}
             aria-pressed={isSelected}
           >
-            {isHidden ? "" : v}
+            {v}
           </button>
         );
       })}
